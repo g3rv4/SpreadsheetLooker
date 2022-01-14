@@ -8,7 +8,7 @@ namespace SpreadsheetLooker.Core
     {
         public static Config Instance { get; private set; }
         
-        public string RangeUrl { get; private set; }
+        public string SpreadsheetUrl { get; private set; }
         public ImmutableArray<string> CliFields { get; private set; }
         public ServiceAccountCredential AccountCredential { get; private set; }
         public string Token { get; private set; }
@@ -20,7 +20,7 @@ namespace SpreadsheetLooker.Core
             var data = Jil.JSON.Deserialize<ConfigData>(File.ReadAllText(path));
             Instance = new Config
             {
-                RangeUrl = data.RangeUrl,
+                SpreadsheetUrl = data.SpreadsheetUrl,
                 CliFields = data.CliFields.ToImmutableArray(),
                 Token = data.Token,
                 AccountCredential = new ServiceAccountCredential(new ServiceAccountCredential.Initializer(data.Email)
@@ -35,7 +35,7 @@ namespace SpreadsheetLooker.Core
         {
             public string Email { get; set; }
             public string PrivateKey { get; set; }
-            public string RangeUrl { get; set; }
+            public string SpreadsheetUrl { get; set; }
             public string[] CliFields { get; set; }
             public string Token { get; set; }
         }

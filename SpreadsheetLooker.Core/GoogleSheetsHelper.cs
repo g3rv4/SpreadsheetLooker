@@ -9,7 +9,7 @@ namespace SpreadsheetLooker.Core
 {
     public class GoogleSheetsHelper
     {
-        public static async Task<ImmutableDictionary<string, string>> GetDataAsync()
+        public static async Task<ImmutableDictionary<string, string>> GetDataAsync(string sheet = null)
         {
             var cred = Config.Instance.AccountCredential;
             var accessToken = await cred.GetAccessTokenForRequestAsync();
@@ -21,10 +21,17 @@ namespace SpreadsheetLooker.Core
                     Authorization = new AuthenticationHeaderValue("Bearer", accessToken)
                 }
             };
-            var res = await client.GetStringAsync(Config.Instance.RangeUrl);
-            var data = JSON.Deserialize<SpreadsheetData>(res, Options.CamelCase);
-            return data.Values.Where(v=>v.Length == 2)
-                .ToImmutableDictionary(v => v[0], v => v[1]);
+            try
+            {
+                var res = await client.GetStringAsync($"{Config.Instance.SpreadsheetUrl}/values/{(string.IsNullOrEmpty(sheet) ? "" : sheet + "!")}C:D");
+                var data = JSON.Deserialize<SpreadsheetData>(res, Options.CamelCase);
+                return data.Values.Where(v => v.Length == 2)
+                    .ToImmutableDictionary(v => v[0], v => v[1]);
+            }
+            catch (HttpRequestException)
+            {
+                return ImmutableDictionary<string, string>.Empty;
+            }
         }
         
         private class SpreadsheetData
