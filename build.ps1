@@ -1,46 +1,32 @@
-param (
-    [Parameter(Mandatory=$true)][int]$BuildNumber,
-    [Parameter(Mandatory=$false)][string]$CommitSHA
-)
-
 $basePath = Get-Location
-$csProjPath = Join-Path $basePath SpreadsheetLooker.Web/SpreadsheetLooker.Web.csproj
-$buildPath = Join-Path $basePath bin/build
+$publishPath = Join-Path $basePath .publish
+$packagesPath = Join-Path $basePath .packages
 
-[xml]$xmlDoc = Get-Content $csProjPath
-$versionElement = $xmlDoc['Project']['PropertyGroup']['Version']
-$version = [version]$versionElement.InnerText
-$newVersion = "$($version.Major).$($version.Minor).$($BuildNumber)"
-
-$versionWithoutHash = $newVersion
-if ($CommitSHA) {
-    $newVersion = "$($newVersion)+$($CommitSHA.SubString(0, 7))"
+if (Test-Path $publishPath -PathType Container) {
+    rm -rf $publishPath
 }
-
-$versionElement.InnerText = $newVersion
-$xmlDoc.Save($csProjPath)
-
-if (Test-Path $buildPath -PathType Container) {
-    rm -rf $buildPath
+if (Test-Path $packagesPath -PathType Container) {
+    rm -rf $packagesPath
+} else {
+    New-Item -Path $packagesPath -ItemType "directory"
 }
 
 $uid = sh -c 'id -u'
 $gid = sh -c 'id -g'
 
-docker run --rm -v "$($basePath):/var/src" mcr.microsoft.com/dotnet/sdk:5.0.401-alpine3.14 ash -c "dotnet publish -c Release /var/src/SpreadsheetLooker.Web/SpreadsheetLooker.Web.csproj -o /var/src/bin/build && chown -R $($uid):$($gid) /var/src"
+docker run --rm -v "$($basePath):/var/src" -v "$($publishPath):/var/publish" mcr.microsoft.com/dotnet/sdk:6.0.101-alpine3.14 ash -c "dotnet publish -c Release /var/src/SpreadsheetLooker.Web/SpreadsheetLooker.Web.csproj -o /var/publish && chown -R $($uid):$($gid) /var/publish"
 
-$nuspecPath = Join-Path $buildPath spreadhseetlooker.web.nuspec
-$nupkgPath = Join-Path $buildPath "spreadhseetlooker.web.$($newVersion).nupkg"
-cp spreadhseetlooker.web.nuspec $nuspecPath
+$version = [version](Get-Item "$publishPath/SpreadsheetLooker.Web.dll").VersionInfo.FileVersion
+$version = "$($version.Major).$($version.Minor).$($version.Build)"
 
-[xml]$xmlDoc = Get-Content $nuspecPath
-$xmlDoc['package']['metadata']['version'].InnerText = $versionWithoutHash
-$xmlDoc.Save($nuspecPath)
+Write-Output "Version is $version"
 
-Compress-Archive -Path "$($buildPath)/*" -DestinationPath $nupkgPath
+$nuspecPath = Join-Path $publishPath spreadsheetlooker.web.nuspec
+(Get-Content spreadsheetlooker.web.nuspec).Replace('$version$', $version) | Set-Content $nuspecPath
+
+$nupkgPath = Join-Path $packagesPath "spreadsheetlooker.web.$($version).nupkg"
+Compress-Archive -Path "$($publishPath)/*" -DestinationPath $nupkgPath
 
 if ($env:GITHUB_ENV) {
-    Write-Output "VERSION_WITHOUT_HASH=$versionWithoutHash" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-    Write-Output "VERSION=$newVersion" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
-    Write-Output "PKG_PATH=$nupkgPath" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+    Write-Output "VERSION=$version" | Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
 }

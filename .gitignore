@@ -7,3 +7,5 @@ launchSettings.json
 .idea/
 config.json
 .DS_Store
+.publish/
+.packages/

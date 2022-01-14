@@ -8,6 +8,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - uses: actions/checkout@v2
+      with:
+        fetch-depth: 0 # get entire git tree, required for nerdbank gitversioning
     - uses: Azure/login@v1
       with:
         creds: ${{ secrets.AZURE_CREDENTIALS }}
@@ -19,10 +21,12 @@ jobs:
 
     - name: Build project
       shell: pwsh
-      run: ./build.ps1 $env:GITHUB_RUN_NUMBER $env:GITHUB_SHA
+      run: ./build.ps1
     - name: Push it to GitHub
-      run: curl -X PUT -u "$GITHUB_ACTOR:${{ secrets.GITHUB_TOKEN }}" -F package=@$PKG_PATH https://nuget.pkg.github.com/g3rv4/
+      run: |
+        dotnet nuget add source --username g3rv4 --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/g3rv4/index.json"
+        dotnet nuget push --skip-duplicate '.packages/*.nupkg' -k ${{ secrets.GITHUB_TOKEN }} -s GitHub
     - name: Create and deploy an Octopus release
       run: |
         dotnet tool install --global Octopus.DotNet.Cli
-        dotnet-octo create-release --project SpreadsheetLooker.Web --releaseNumber $VERSION --package spreadsheetlooker.web:$VERSION_WITHOUT_HASH --deployto Prod --server "${{ steps.azureSecrets.outputs.OctopusServerUrl }}" --apiKey "${{ steps.azureSecrets.outputs.OctopusApiKey }}" --progress
+        dotnet-octo create-release --project SpreadsheetLooker.Web --releaseNumber $VERSION --package spreadsheetlooker.web:$VERSION --deployto Prod --server "${{ steps.azureSecrets.outputs.OctopusServerUrl }}" --apiKey "${{ steps.azureSecrets.outputs.OctopusApiKey }}" --progress
