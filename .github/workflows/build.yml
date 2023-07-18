@@ -6,33 +6,66 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        architecture: [ amd64, arm64v8 ]
     steps:
-    - uses: actions/checkout@v2
-      with:
-        fetch-depth: 0 # get entire git tree, required for nerdbank gitversioning
-    - uses: Azure/login@v1
-      with:
-        creds: ${{ secrets.AZURE_CREDENTIALS }}
-    - uses: Azure/get-keyvault-secrets@v1.1
-      with:
-        keyvault: "ActionsBuild"
-        secrets: 'OctopusServerUrl, OctopusApiKey, NuGetEndpoint'
-      id: azureSecrets
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # get entire git tree, required for nerdbank gitversioning
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push the Docker image
+        shell: pwsh
+        run: |
+          Push-Location src
+          $version = (nbgv get-version -f json | ConvertFrom-Json).SimpleVersion
+          Write-Host "Version $version"
+          Pop-Location
 
-    - name: Add NuGet source
-      shell: pwsh
-      run: |
-        nuget sources Add -Name MySource -Source ${{ steps.azureSecrets.outputs.NuGetEndpoint }}
-        Register-PSRepository -Name MySource -SourceLocation ${{ steps.azureSecrets.outputs.NuGetEndpoint }} -InstallationPolicy Trusted
-        Install-Module BuildScripts -Repository MySource
-    - name: Build project
-      shell: pwsh
-      run: ./build.ps1
-    - name: Push it to GitHub
-      run: |
-        dotnet nuget add source --username g3rv4 --password ${{ secrets.GITHUB_TOKEN }} --store-password-in-clear-text --name github "https://nuget.pkg.github.com/g3rv4/index.json"
-        dotnet nuget push --skip-duplicate '.build/packages/*.nupkg' -k ${{ secrets.GITHUB_TOKEN }} -s GitHub
-    - name: Create and deploy an Octopus release
-      run: |
-        dotnet tool install --global Octopus.DotNet.Cli
-        dotnet-octo create-release --project SpreadsheetLooker.Web --releaseNumber $VERSION --package spreadsheetlooker.web:$VERSION --deployto Prod --server "${{ steps.azureSecrets.outputs.OctopusServerUrl }}" --apiKey "${{ steps.azureSecrets.outputs.OctopusApiKey }}" --progress
+          if ('${{ matrix.architecture }}' -eq 'arm64v8') {
+            sudo apt-get install qemu binfmt-support qemu-user-static
+            docker run --rm --privileged multiarch/qemu-user-static --reset -p yes
+          }
+
+          docker build . -t ghcr.io/g3rv4/spreadsheetlooker:latest-${{ matrix.architecture }} --build-arg ARCH=${{ matrix.architecture }}
+          docker tag ghcr.io/g3rv4/spreadsheetlooker:latest-${{ matrix.architecture }} ghcr.io/g3rv4/spreadsheetlooker:$version-${{ matrix.architecture }}
+          docker push ghcr.io/g3rv4/spreadsheetlooker:latest-${{ matrix.architecture }}
+          docker push ghcr.io/g3rv4/spreadsheetlooker:$version-${{ matrix.architecture }}
+  push-manifest:
+    runs-on: ubuntu-latest
+    needs: [ build ]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0 # get entire git tree, required for nerdbank gitversioning
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build manifest
+        shell: pwsh
+        run: |
+          Push-Location src
+          $version = (nbgv get-version -f json | ConvertFrom-Json).SimpleVersion
+          Write-Host "Version $version"
+          Pop-Location
+
+          docker manifest create `
+                ghcr.io/g3rv4/spreadsheetlooker:latest `
+                --amend ghcr.io/g3rv4/spreadsheetlooker:latest-amd64 `
+                --amend ghcr.io/g3rv4/spreadsheetlooker:latest-arm64v8
+          docker manifest create `
+                ghcr.io/g3rv4/spreadsheetlooker:$version `
+                --amend ghcr.io/g3rv4/spreadsheetlooker:$version-amd64 `
+                --amend ghcr.io/g3rv4/spreadsheetlooker:$version-arm64v8
+          docker manifest push ghcr.io/g3rv4/spreadsheetlooker:latest
+          docker manifest push ghcr.io/g3rv4/spreadsheetlooker:$version
