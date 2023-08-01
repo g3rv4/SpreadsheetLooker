@@ -8,8 +8,12 @@ namespace SpreadsheetLooker.Web.Controllers
 {
     public class HomeController : Controller
     {
+        [Route("health")]
+        public IActionResult Health() =>
+            Ok();
+        
         [Route("")]
-        [Route("{sheet}", Order = 1)]
+        [Route("{sheet}", Order = 1000)]
         public async Task<IActionResult> Index(string sheet = null)
         {
             if (!Request.Headers.TryGetValue("Authorization", out var auth)
