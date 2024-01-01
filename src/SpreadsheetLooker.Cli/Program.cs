@@ -14,7 +14,15 @@ namespace SpreadsheetLooker.Cli
             var selectedData = new List<string>();
             foreach (var key in Config.Instance.CliFields)
             {
-                selectedData.Add(data[key]);
+                if (data.TryGetValue(key, out var val))
+                {
+                    selectedData.Add(val);
+                }
+                else
+                {
+                    selectedData.Add("ERROR FETCHING");
+                }
+                
             }
             
             Console.WriteLine($"[ {string.Join(" I ", selectedData)} ]");

@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using System.Net.Http;
@@ -16,6 +17,7 @@ namespace SpreadsheetLooker.Core
 
             var client = new HttpClient
             {
+                Timeout = TimeSpan.FromSeconds(5),
                 DefaultRequestHeaders =
                 {
                     Authorization = new AuthenticationHeaderValue("Bearer", accessToken)
